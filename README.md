@@ -6,6 +6,8 @@
 
 openLoadstar provides a metadata system based on a work unit called **WayPoint**, so that AI agents can precisely understand a project's intent and progress while working on it. Comprising four components — SPEC documents, a CLI tool, a web UI, and an MCP server — it lets you restore the same working context from any AI client environment (Claude Code, Cursor, Claude Desktop, and so on).
 
+> 📌 Currently designed for **solo developers**. Team collaboration features are planned for a future release.
+
 ---
 
 ## 🤔 Why openLoadstar
