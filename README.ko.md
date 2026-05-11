@@ -4,7 +4,7 @@
 
 > **AI 에이전트와 함께 일하는 개발자를 위한, 코드와 메타데이터의 길잡이 시스템**
 
-openLoadstar는 AI가 프로젝트의 의도와 진행 상황을 정확히 이해하고 작업할 수 있도록, **WayPoint** 라는 작업 단위 기반의 메타데이터 체계를 제공합니다. SPEC 문서, CLI 도구, 웹 UI, MCP 서버까지 4개 컴포넌트로 구성되며, 어떤 환경의 AI 클라이언트(Claude Code · Cursor · Claude Desktop 등)에서도 동일한 작업 맥락을 복원할 수 있습니다.
+openLoadstar는 AI가 프로젝트의 의도와 진행 상황을 정확히 이해하고 작업할 수 있도록, **WayPoint** 라는 작업 단위 기반의 메타데이터 체계를 제공합니다. WayPoint와 Map은 각각 의도를 담는 **GOAL** 슬롯을 가지며, 상위 Map 목표에서 WayPoint TODO까지 하향식으로 의도를 추적할 수 있습니다. SPEC 문서, CLI 도구, 웹 UI, MCP 서버까지 4개 컴포넌트로 구성되며, 어떤 환경의 AI 클라이언트(Claude Code · Cursor · Claude Desktop 등)에서도 동일한 작업 맥락을 복원할 수 있습니다.
 
 > 📌 현재는 **1인 개발자**를 위해 설계되어 있습니다. 팀 협업 기능은 향후 버전에서 지원 예정입니다.
 
@@ -19,7 +19,7 @@ AI 에이전트와 협업하는 개발자라면 한 번쯤 겪는 문제들입�
 - **AI가 코드베이스를 광역 탐색하면서 토큰을 낭비한다** — 작업 범위 제한이 없다.
 - **"무엇을 왜 하는가"가 코드 어디에도 없다** — 의도(intent)는 PR 설명이나 Slack에 흩어져 있다.
 
-openLoadstar는 이를 **파일 기반 메타데이터(WayPoint·Map·Decision)** 로 풀어냅니다. AI는 세션 시작 시 진입점 파일 하나만 읽으면 현재 작업 맥락을 복원하고, CODE_MAP에 정의된 범위 내에서만 코드를 탐색하며, TECH_SPEC 체크박스로 진행도를 추적합니다.
+openLoadstar는 이를 **파일 기반 메타데이터(WayPoint·Map·Decision)** 로 풀어냅니다. AI는 세션 시작 시 진입점 파일 하나만 읽으면 현재 작업 맥락을 복원하고, CODE_MAP에 정의된 범위 내에서만 코드를 탐색하며, TODO 체크박스로 진행도를 추적합니다.
 
 ### 설계 원칙: Tolerable Consistency (허용 범위 내 일관성)
 
@@ -32,12 +32,13 @@ openLoadstar는 이를 **파일 기반 메타데이터(WayPoint·Map·Decision)*
 
 ## 🧭 핵심 개념 & 용어
 
-### 5대 요소
+### 핵심 요소
 
 | 요소 | 약어 | 역할 |
 |:---|:---|:---|
-| **Map** | `M://` | WayPoint 묶음을 위한 인덱스 (계층 경로) |
-| **WayPoint** | `W://` | **모든 작업의 실행 단위** (의도·TECH_SPEC·CODE_MAP·진행도) |
+| **Map** | `M://` | WayPoint 묶음을 위한 인덱스 (계층 경로). 하위 트리의 큰 의도를 담는 **GOAL** 슬롯을 가진다. |
+| **WayPoint** | `W://` | **모든 작업의 실행 단위** (GOAL·TODO·CODE_MAP·진행도) |
+| **Data WayPoint** | `D://` | 코드와 독립적으로 변화하는 데이터 아티팩트(설정, 참조 데이터)의 메타 레코드 |
 | **Link** | `L://` | 요소 간 논리적 관계 (참조·선후·검증) |
 | **SavePoint** | `S://` | 물리적 좌표 (Git 커밋·파일·라인) |
 | **Decision** | — | OPEN_QUESTIONS의 결정 기록 (ADR 패턴) |
@@ -47,7 +48,8 @@ openLoadstar는 이를 **파일 기반 메타데이터(WayPoint·Map·Decision)*
 | 용어 | 의미 |
 |:---|:---|
 | **드리프트(drift)** | 코드와 메타데이터(`.loadstar/`) 간 불일치. 완전 제거가 아닌 **인지·관리** 가 목표 |
-| **TECH_SPEC** | WayPoint 안의 작업 항목 체크박스. `[ ]` 미완료 / `[x] YYYY-MM-DD` 완료 |
+| **GOAL** | Map 또는 WayPoint의 *의도* 필드. "이것이 달성하는 것"을 기술 — SUMMARY(정체성)·TODO(실행)와 구분된다. |
+| **TODO** | WayPoint 안의 작업 항목 체크박스. `[ ]` 미완료 / `[x] YYYY-MM-DD` 완료. 구 명칭 `TECH_SPEC`에서 변경. |
 | **CODE_MAP** | WayPoint가 코드를 수정할 때 AI의 탐색 범위(scope)를 디렉토리 단위로 한정 — 광역 탐색 비용 절감 |
 | **STATUS** | `S_IDL`(대기) / `S_PRG`(진행) / `S_STB`(안정) / `S_ERR`(오류) / `S_REV`(검토 필요) |
 | **TODO 상태** | `PENDING` / `ACTIVE` / `BLOCKED` / `COMPLETED` / `FAILED` |
@@ -62,6 +64,7 @@ openLoadstar는 이를 **파일 기반 메타데이터(WayPoint·Map·Decision)*
 ```
 M://root/cli                 →  .loadstar/MAP/root.cli.md
 W://root/cli/cmd_show        →  .loadstar/WAYPOINT/root.cli.cmd_show.md
+D://root/config/app_config   →  .loadstar/DATA_WAYPOINT/root.config.app_config.md
 ```
 
 자세한 SPEC은 **[openLoadstar/spec](https://github.com/openLoadstar/spec)** 참조.
@@ -177,7 +180,7 @@ LOADSTAR SPEC 기준으로 이 프로젝트의 현재 상태를 검토하고 오
 ## 규칙 (엄수)
 
 - **소스코드 열람 금지** — 메타데이터만으로 판단. 구현 착수 결정 후 필요 시에만 Read.
-- **항목 없이 코드 수정 금지** — TECH_SPEC에 없으면 먼저 WP에 `- [ ] 작업내용` 추가.
+- **항목 없이 코드 수정 금지** — WayPoint TODO에 없으면 먼저 `- [ ] 작업내용` 추가.
 - **STATUS 전환** — 작업 시작 시 `S_IDL → S_PRG`, 완료 시 전체 `[x]` 후 `S_STB`.
 - **SYNCED_AT 30일 초과 WP** — 발견 시 경고 표시. CODE_MAP scope 유효성 확인 권고.
 - **OPEN_QUESTIONS 미해결 항목** — 발견 시 사용자에게 먼저 확인 요청.
@@ -186,7 +189,7 @@ LOADSTAR SPEC 기준으로 이 프로젝트의 현재 상태를 검토하고 오
 ## 출력 형식
 
 ### ACTIVE WayPoints
-- W://address — SUMMARY (TECH_SPEC: 완료 N / 전체 M)
+- W://address — SUMMARY (TODO: 완료 N / 전체 M)
 
 ### ⚠️ 경고
 - SYNCED_AT 30일 초과 / 깨진 참조 / 미해결 OPEN_QUESTIONS
@@ -251,7 +254,7 @@ loadstar init
 - 첫 Map: M://root
 - 첫 WayPoint: W://root/initial_setup
 
-W://root/initial_setup 의 TECH_SPEC에 다음 초기 셋업 항목을 등록해줘:
+W://root/initial_setup 의 TODO에 다음 초기 셋업 항목을 등록해줘:
 - [ ] 디렉토리 구조 정의
 - [ ] 의존성 설치 스크립트 작성
 - [ ] 첫 단위 테스트 케이스 추가
@@ -276,7 +279,7 @@ loadstar init
 1. CLAUDE.md 에 LOADSTAR 규칙 섹션을 추가해 (spec/01.MASTER_GUIDE.md 참조)
 2. 주요 모듈을 분석해서 Map 계층을 만들어줘 — 예: M://root/backend, M://root/frontend
 3. 각 모듈의 핵심 책임을 WayPoint로 정의해. CODE_MAP.scope 에 해당 디렉토리를 명시해.
-4. 현재 진행 중인 작업이 있으면 해당 WayPoint의 TECH_SPEC 에 [ ] 항목으로 등록해.
+4. 현재 진행 중인 작업이 있으면 해당 WayPoint의 TODO 에 [ ] 항목으로 등록해.
 
 작업 후 `loadstar show` 와 `loadstar validate` 로 깨진 참조가 없는지 확인해줘.
 ```
@@ -289,10 +292,10 @@ loadstar init
 - **`.loadstar/.clionly/` 직접 접근 금지** — CLI 전담 영역. AI 에이전트도 직접 읽기·쓰기 금지. 직접 접근 시 LOG와 실제 메타 상태 간 정합성이 영구적으로 깨집니다.
 
 ### 권장 규칙
-- **항목 없이 코드 수정 금지** — 코드 수정 전 대상 WayPoint의 TECH_SPEC에 `- [ ] 작업 내용` 을 먼저 등록합니다. 빠른 버그 수정의 경우 사후 등록도 허용됩니다.
+- **항목 없이 코드 수정 금지** — 코드 수정 전 대상 WayPoint의 TODO에 `- [ ] 작업 내용` 을 먼저 등록합니다. 빠른 버그 수정의 경우 사후 등록도 허용됩니다.
 - **STATUS 전환 시점**:
   - 작업 시작 시 `S_IDL → S_PRG`
-  - 모든 TECH_SPEC 항목이 `[x]` 가 되면 `S_PRG → S_STB`
+  - 모든 TODO 항목이 `[x]` 가 되면 `S_PRG → S_STB`
 - **SYNCED_AT 30일 초과 WP** — CODE_MAP의 scope 가 여전히 유효한지 확인한 후 작업합니다.
 - **OPEN_QUESTIONS 미해결 항목** — AI는 작업 착수 전 사람에게 결정을 확인합니다.
 

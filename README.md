@@ -4,7 +4,7 @@
 
 > **A guidance system for code and metadata, built for developers working with AI agents**
 
-openLoadstar provides a metadata system based on a work unit called **WayPoint**, so that AI agents can precisely understand a project's intent and progress while working on it. Comprising four components — SPEC documents, a CLI tool, a web UI, and an MCP server — it lets you restore the same working context from any AI client environment (Claude Code, Cursor, Claude Desktop, and so on).
+openLoadstar provides a metadata system based on a work unit called **WayPoint**, so that AI agents can precisely understand a project's intent and progress while working on it. Each WayPoint and Map carries a **GOAL** slot that records its intent, enabling a top-down trace from high-level Map goals down to WayPoint TODOs. Comprising four components — SPEC documents, a CLI tool, a web UI, and an MCP server — it lets you restore the same working context from any AI client environment (Claude Code, Cursor, Claude Desktop, and so on).
 
 > 📌 Currently designed for **solo developers**. Team collaboration features are planned for a future release.
 
@@ -19,7 +19,7 @@ If you collaborate with AI agents, these problems should look familiar:
 - **AI burns tokens scanning the whole codebase** — there's no scope to constrain it.
 - **"What and why" lives nowhere in the code** — intent is scattered across PR descriptions and Slack threads.
 
-openLoadstar solves this with **file-based metadata (WayPoint · Map · Decision)**. At session start, the AI reads a single entry-point file to restore context, scans only within the directories defined in `CODE_MAP`, and tracks progress through `TECH_SPEC` checkboxes.
+openLoadstar solves this with **file-based metadata (WayPoint · Map · Decision)**. At session start, the AI reads a single entry-point file to restore context, scans only within the directories defined in `CODE_MAP`, and tracks progress through `TODO` checkboxes.
 
 ### Design Principle: Tolerable Consistency
 
@@ -32,12 +32,13 @@ openLoadstar solves this with **file-based metadata (WayPoint · Map · Decision
 
 ## 🧭 Core Concepts & Terminology
 
-### Five Elements
+### Core Elements
 
 | Element | Prefix | Role |
 |:---|:---|:---|
-| **Map** | `M://` | An index for grouping WayPoints (hierarchical paths) |
-| **WayPoint** | `W://` | **The execution unit for all work** (intent, TECH_SPEC, CODE_MAP, progress) |
+| **Map** | `M://` | An index for grouping WayPoints (hierarchical paths). Carries a **GOAL** slot for the high-level intent of the sub-tree. |
+| **WayPoint** | `W://` | **The execution unit for all work** (GOAL, TODO, CODE_MAP, progress) |
+| **Data WayPoint** | `D://` | Metadata record for a data artifact (config, reference data) that changes independently of code |
 | **Link** | `L://` | Logical relations between elements (reference, sequence, test) |
 | **SavePoint** | `S://` | Physical coordinates (Git commits, files, line ranges) |
 | **Decision** | — | Decision records for OPEN_QUESTIONS (ADR pattern) |
@@ -47,7 +48,8 @@ openLoadstar solves this with **file-based metadata (WayPoint · Map · Decision
 | Term | Meaning |
 |:---|:---|
 | **Drift** | A mismatch between code and metadata (`.loadstar/`). The goal is **awareness and management**, not elimination. |
-| **TECH_SPEC** | Work-item checkboxes inside a WayPoint. `[ ]` pending / `[x] YYYY-MM-DD` done. |
+| **GOAL** | The *intent* field on a Map or WayPoint. States "what this fulfils" — distinct from SUMMARY (identity) and TODO (execution). |
+| **TODO** | Work-item checkboxes inside a WayPoint. `[ ]` pending / `[x] YYYY-MM-DD` done. Replaces the older `TECH_SPEC` term. |
 | **CODE_MAP** | A directory-level scope that constrains the AI's search range when a WayPoint involves code changes — keeps lookup costs down. |
 | **STATUS** | `S_IDL` (idle) / `S_PRG` (in progress) / `S_STB` (stable) / `S_ERR` (error) / `S_REV` (review needed) |
 | **TODO state** | `PENDING` / `ACTIVE` / `BLOCKED` / `COMPLETED` / `FAILED` |
@@ -62,6 +64,7 @@ openLoadstar solves this with **file-based metadata (WayPoint · Map · Decision
 ```
 M://root/cli                 →  .loadstar/MAP/root.cli.md
 W://root/cli/cmd_show        →  .loadstar/WAYPOINT/root.cli.cmd_show.md
+D://root/config/app_config   →  .loadstar/DATA_WAYPOINT/root.config.app_config.md
 ```
 
 For the full SPEC, see **[openLoadstar/spec](https://github.com/openLoadstar/spec)**.
@@ -179,7 +182,7 @@ Review the current state of this project against the LOADSTAR SPEC and identify 
 
 - **Do not read source code** — Judge from metadata first. Only read source after
   deciding to implement.
-- **Do not modify code without an item** — If TECH_SPEC has no entry,
+- **Do not modify code without an item** — If the WayPoint's TODO has no entry,
   add `- [ ] task description` to the WP first.
 - **STATUS transitions** — On start: `S_IDL → S_PRG`. On full completion: `[x]` then `S_STB`.
 - **WPs with SYNCED_AT older than 30 days** — Warn and recommend rechecking the
@@ -190,7 +193,7 @@ Review the current state of this project against the LOADSTAR SPEC and identify 
 ## Output Format
 
 ### ACTIVE WayPoints
-- W://address — SUMMARY (TECH_SPEC: N done / M total)
+- W://address — SUMMARY (TODO: N done / M total)
 
 ### ⚠️ Warnings
 - SYNCED_AT > 30 days / broken references / unresolved OPEN_QUESTIONS
@@ -255,7 +258,7 @@ Build the initial LOADSTAR structure for this project.
 - First Map: M://root
 - First WayPoint: W://root/initial_setup
 
-Register these initial setup items into the TECH_SPEC of W://root/initial_setup:
+Register these initial setup items into the TODO of W://root/initial_setup:
 - [ ] Define directory structure
 - [ ] Write dependency installation script
 - [ ] Add the first unit test case
@@ -282,7 +285,7 @@ I want to organize this codebase with LOADSTAR metadata.
 3. Define each module's primary responsibility as a WayPoint. Specify the
    target directory in CODE_MAP.scope.
 4. If there's any work in progress, register it under the corresponding
-   WayPoint's TECH_SPEC as a [ ] item.
+   WayPoint's TODO as a [ ] item.
 
 Afterwards, run `loadstar show` and `loadstar validate` to confirm there
 are no broken references.
@@ -296,10 +299,10 @@ are no broken references.
 - **Do not access `.loadstar/.clionly/` directly** — It's CLI-only territory. Even AI agents must not read or write here. Direct access permanently breaks consistency between LOG and the actual metadata state.
 
 ### Recommended rules
-- **Do not modify code without an item** — Before changing code, register `- [ ] description` in the target WayPoint's TECH_SPEC. For quick bug fixes, registering after the fact is acceptable.
+- **Do not modify code without an item** — Before changing code, register `- [ ] description` in the target WayPoint's TODO. For quick bug fixes, registering after the fact is acceptable.
 - **STATUS transition timing**:
   - On start: `S_IDL → S_PRG`
-  - When all TECH_SPEC items become `[x]`: `S_PRG → S_STB`
+  - When all TODO items become `[x]`: `S_PRG → S_STB`
 - **WPs with SYNCED_AT older than 30 days** — Verify that the CODE_MAP scope is still valid before working.
 - **Unresolved OPEN_QUESTIONS** — The AI must confirm a decision with the user before proceeding.
 
